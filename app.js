@@ -20,7 +20,6 @@
 
   var hitNoBtn = document.getElementById("hitNoBtn");
   var hitYesBtn = document.getElementById("hitYesBtn");
-  var notesInput = document.getElementById("notes");
 
   var logBtn = document.getElementById("logBtn");
   var undoBtn = document.getElementById("undoBtn");
@@ -36,6 +35,7 @@
   var overallBlock = document.getElementById("overallBlock");
   var groupsBlock = document.getElementById("groupsBlock");
   var byTypeBlock = document.getElementById("byTypeBlock");
+  var allPitchesBlock = document.getElementById("allPitchesBlock");
 
   var copySummaryBtn = document.getElementById("copySummaryBtn");
   var exportCsvBtn = document.getElementById("exportCsvBtn");
@@ -55,7 +55,6 @@
   var selectedResult = null;
   var hitLocation = false; // default No
 
-  // Helpers
   function pad2(n) {
     var s = String(n);
     return s.length < 2 ? ("0" + s) : s;
@@ -82,7 +81,7 @@
   function show(el) { el.classList.remove("hidden"); }
   function hide(el) { el.classList.add("hidden"); }
 
-  var storageKey = "pitchTracker.sessions.v1";
+  var storageKey = "marthaTracker.sessions.v1";
 
   function loadSessions() {
     try {
@@ -113,7 +112,6 @@
   function resetSelections() {
     selectedPitchType = null;
     selectedResult = null;
-    notesInput.value = "";
     setHitLocation(false);
 
     var choices = document.querySelectorAll(".choice");
@@ -138,6 +136,15 @@
     var total = pitches.length;
     var strikePct = total ? Math.round((strikes / total) * 100) : 0;
     return { total: total, strikes: strikes, balls: balls, hits: hits, strikePct: strikePct };
+  }
+
+  function groupInFives(pitches) {
+    var groups = [];
+    for (var i = 0; i < pitches.length; i += 5) {
+      var slice = pitches.slice(i, i + 5);
+      groups.push({ index: (i / 5) + 1, pitches: slice, stats: countStats(slice) });
+    }
+    return groups;
   }
 
   function byTypeStats(pitches) {
@@ -167,15 +174,6 @@
     return out;
   }
 
-  function groupInFives(pitches) {
-    var groups = [];
-    for (var i = 0; i < pitches.length; i += 5) {
-      var slice = pitches.slice(i, i + 5);
-      groups.push({ index: (i / 5) + 1, pitches: slice, stats: countStats(slice) });
-    }
-    return groups;
-  }
-
   function escapeCsv(val) {
     var s = String(val == null ? "" : val);
     if (s.indexOf('"') >= 0) s = s.replace(/"/g, '""');
@@ -195,11 +193,28 @@
     URL.revokeObjectURL(url);
   }
 
-  function makeSummaryText(session) {
-    var s = countStats(session.pitches);
-    var name = session.name && session.name.trim() ? ('"' + session.name.trim() + '"') : "Session";
-    return name + " • " + s.total + " pitches • Strikes: " + s.strikes + ", Balls: " + s.balls +
-      " • Strike%: " + s.strikePct + "% • Hit location (Y): " + s.hits;
+  function shareCsvOrDownload(filename, csvText) {
+    var blob = new Blob([csvText], { type: "text/csv" });
+
+    try {
+      if (navigator.share && typeof File === "function") {
+        var file = new File([blob], filename, { type: "text/csv" });
+
+        if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+          navigator.share({
+            title: "The “Martha” Tracker CSV",
+            text: "Pitch session export",
+            files: [file]
+          }).then(function () {
+            toast("Share opened");
+          }).catch(function () {});
+          return;
+        }
+      }
+    } catch (e) {}
+
+    downloadTextFile(filename, csvText, "text/csv");
+    toast("Downloaded CSV");
   }
 
   function buildChoiceButtons(container, items, onPick, extraClassFn) {
@@ -228,9 +243,7 @@
     for (var i = 0; i < last.length; i++) {
       var p = last[i];
       var li = document.createElement("li");
-      var hit = p.hitLocation ? " • Hit:Y" : " • Hit:N";
-      var note = p.notes ? (" • Note:" + p.notes) : "";
-      li.textContent = p.pitchType + " • " + p.result + hit + note;
+      li.textContent = p.pitchType + " • " + p.result + " • Hit:" + (p.hitLocation ? "Y" : "N");
       lastFiveEl.appendChild(li);
     }
   }
@@ -312,7 +325,7 @@
     setSessionSubtitle();
     goToLogger();
     renderRunning();
-    toast("Session started");
+    toast("Let’s go, Martha! Session started.");
   }
 
   function endSession() {
@@ -320,7 +333,7 @@
     currentSession.ended = true;
     currentSession.endedAt = new Date().toISOString();
     setSessionSubtitle();
-    toast("Session ended");
+    toast("Session ended. Nice work.");
     goToReport(currentSession);
   }
 
@@ -330,8 +343,22 @@
       currentSession.ended = true;
       currentSession.endedAt = new Date().toISOString();
       setSessionSubtitle();
-      toast("20 pitches reached. Session complete.");
+      toast("20 pitches done. Big finish!");
       goToReport(currentSession);
+    }
+  }
+
+  function lastGroupCheerIfNeeded(totalPitches) {
+    if (totalPitches % 5 !== 0) return;
+
+    var start = totalPitches - 5;
+    var slice = currentSession.pitches.slice(start, start + 5);
+    var s = countStats(slice);
+
+    if (s.strikePct > 50) {
+      toast("🔥 Group " + (totalPitches / 5) + ": " + s.strikePct + "% strikes. Love it.");
+    } else {
+      toast("Group " + (totalPitches / 5) + " done. Next 5: attack the zone.");
     }
   }
 
@@ -343,21 +370,18 @@
       at: new Date().toISOString(),
       pitchType: selectedPitchType,
       result: selectedResult,
-      hitLocation: hitLocation,
-      notes: notesInput.value.trim()
+      hitLocation: hitLocation
     };
 
     currentSession.pitches.push(pitch);
 
-    // Reset only result + notes; keep pitch type selected
-    selectedResult = null;
-    notesInput.value = "";
-
-    var resBtns = document.querySelectorAll("#resultButtons .choice");
-    for (var i = 0; i < resBtns.length; i++) resBtns[i].classList.remove("active");
-
+    resetSelections();
     renderRunning();
     updateLogButtonState();
+
+    toast("Logged pitch #" + currentSession.pitches.length);
+    lastGroupCheerIfNeeded(currentSession.pitches.length);
+
     autoEndIfLimit();
   }
 
@@ -385,52 +409,103 @@
     toast("Saved");
   }
 
-  function exportCurrentCsv() {
-    var s = currentSession;
-    if (!s) return;
-
-    var started = new Date(s.startedAt);
-    var filenameSafe = (s.name && s.name.trim() ? s.name.trim() : "pitch-session")
-      .replace(/[^a-z0-9-_ ]/gi, "")
-      .trim()
-      .replace(/\s+/g, "-")
-      .toLowerCase();
-
-    var filename = (filenameSafe || "pitch-session") + "-" + started.toISOString().slice(0, 10) + ".csv";
-
-    var header = ["Pitch #", "Timestamp", "Pitch Type", "Result", "Hit Location (Y/N)", "Notes"];
+  function buildCsv(session) {
+    var header = ["Pitch #", "Timestamp", "Pitch Type", "Result", "Hit Location (Y/N)"];
     var lines = [header.join(",")];
 
-    for (var i = 0; i < s.pitches.length; i++) {
-      var p = s.pitches[i];
+    for (var i = 0; i < session.pitches.length; i++) {
+      var p = session.pitches[i];
       lines.push([
         escapeCsv(p.n),
         escapeCsv(formatDateTime(new Date(p.at))),
         escapeCsv(p.pitchType),
         escapeCsv(p.result),
-        escapeCsv(p.hitLocation ? "Y" : "N"),
-        escapeCsv(p.notes || "")
+        escapeCsv(p.hitLocation ? "Y" : "N")
       ].join(","));
     }
 
-    downloadTextFile(filename, lines.join("\n"), "text/csv");
+    return lines.join("\n");
+  }
+
+  function exportCurrentCsv() {
+    var s = currentSession;
+    if (!s) return;
+
+    var started = new Date(s.startedAt);
+    var filenameSafe = (s.name && s.name.trim() ? s.name.trim() : "martha-session")
+      .replace(/[^a-z0-9-_ ]/gi, "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .toLowerCase();
+
+    var filename = (filenameSafe || "martha-session") + "-" + started.toISOString().slice(0, 10) + ".csv";
+    var csvText = buildCsv(s);
+
+    shareCsvOrDownload(filename, csvText);
+  }
+
+  function buildCopySummaryText(session) {
+    var lines = [];
+    var started = new Date(session.startedAt);
+    var ended = session.endedAt ? new Date(session.endedAt) : null;
+    var title = session.name && session.name.trim() ? session.name.trim() : "Untitled session";
+    var when = ended ? (formatDateTime(started) + " → " + formatDateTime(ended)) : formatDateTime(started);
+
+    lines.push("The “Martha” Tracker — Session Report");
+    lines.push(title + " • " + when);
+    lines.push("");
+
+    var overall = countStats(session.pitches);
+    lines.push("Overall");
+    lines.push("Total: " + overall.total + " | Strikes: " + overall.strikes + " | Balls: " + overall.balls + " | Strike%: " + overall.strikePct + "% | Hit(Y): " + overall.hits);
+    lines.push("");
+
+    lines.push("Grouped in 5s");
+    var groups = groupInFives(session.pitches);
+    if (groups.length === 0) {
+      lines.push("(No pitches)");
+    } else {
+      for (var gi = 0; gi < groups.length; gi++) {
+        var g = groups[gi];
+        var startN = (g.index - 1) * 5 + 1;
+        var endN = Math.min(g.index * 5, session.pitches.length);
+        lines.push("Group " + g.index + " (Pitches " + startN + "–" + endN + "): Strikes " + g.stats.strikes + ", Balls " + g.stats.balls + ", Strike% " + g.stats.strikePct + "%");
+      }
+    }
+    lines.push("");
+
+    lines.push("All pitches");
+    if (session.pitches.length === 0) {
+      lines.push("(No pitches)");
+    } else {
+      for (var i = 0; i < session.pitches.length; i++) {
+        var p = session.pitches[i];
+        lines.push("#" + p.n + " — " + p.pitchType + " — " + p.result + " — Hit:" + (p.hitLocation ? "Y" : "N"));
+      }
+    }
+
+    return lines.join("\n");
   }
 
   function copySummary() {
     if (!currentSession) return;
-    var text = makeSummaryText(currentSession);
+    var text = buildCopySummaryText(currentSession);
 
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () {
         toast("Summary copied");
       }).catch(function () {
-        downloadTextFile("session-summary.txt", text, "text/plain");
+        downloadTextFile("martha-summary.txt", text, "text/plain");
         toast("Clipboard blocked. Downloaded summary file.");
       });
     } else {
-      downloadTextFile("session-summary.txt", text, "text/plain");
+      downloadTextFile("martha-summary.txt", text, "text/plain");
       toast("Downloaded summary file.");
     }
+  }
+
+  function bannerHtml(kind, big, small) {
+    return '<div class="banner ' + kind + '"><div><div class="big">' + big + '</div><div class="small">' + small + '</div></div></div>';
   }
 
   function renderReport(session) {
@@ -442,7 +517,6 @@
     reportSubtitle.textContent = title + " • " + when;
 
     var overall = countStats(session.pitches);
-
     overallBlock.innerHTML =
       '<div class="reportTitle">Overall</div>' +
       '<table class="table" aria-label="Overall stats">' +
@@ -464,20 +538,25 @@
         var div = document.createElement("div");
         div.style.marginBottom = "12px";
 
+        // Positive reinforcement: >50% strikes turns green
+        var kind = (g.stats.strikePct > 50) ? "good" : "try";
+        var big = (g.stats.strikePct > 50) ? "Nice! ✅" : "Keep going 💪";
+        var small = "Group " + g.index + " — " + g.stats.strikePct + "% strikes (" + g.stats.strikes + " strikes, " + g.stats.balls + " balls)";
+
         var rows = "";
         for (var pi = 0; pi < g.pitches.length; pi++) {
           var p = g.pitches[pi];
           var n = (g.index - 1) * 5 + pi + 1;
           var hit = p.hitLocation ? "Y" : "N";
-          var note = p.notes || "";
-          rows += "<tr><td>#"+n+"</td><td>"+p.pitchType+"</td><td>"+p.result+"</td><td>"+hit+"</td><td>"+note+"</td></tr>";
+          rows += "<tr><td>#"+n+"</td><td>"+p.pitchType+"</td><td>"+p.result+"</td><td>"+hit+"</td></tr>";
         }
 
         div.innerHTML =
+          bannerHtml(kind, big, small) +
           '<div class="reportTitle">Group ' + g.index + " (pitches " + ((g.index - 1) * 5 + 1) + "–" + Math.min(g.index * 5, session.pitches.length) + ")</div>" +
           '<div class="subtitle">Subtotal: Strikes ' + g.stats.strikes + " • Balls " + g.stats.balls + " • Strike% " + g.stats.strikePct + "%</div>" +
           '<table class="table" aria-label="Group ' + g.index + '">' +
-          "<thead><tr><th>#</th><th>Type</th><th>Result</th><th>Hit?</th><th>Notes</th></tr></thead>" +
+          "<thead><tr><th>#</th><th>Type</th><th>Result</th><th>Hit?</th></tr></thead>" +
           "<tbody>" + rows + "</tbody></table>";
 
         groupsBlock.appendChild(div);
@@ -496,6 +575,20 @@
       '<table class="table" aria-label="By pitch type">' +
       "<thead><tr><th>Type</th><th>Total</th><th>Strikes</th><th>Balls</th><th>Strike%</th><th>Hit Y</th></tr></thead>" +
       "<tbody>" + body + "</tbody></table>";
+
+    if (session.pitches.length === 0) {
+      allPitchesBlock.textContent = "No pitches recorded.";
+    } else {
+      var pitchRows = "";
+      for (var pidx = 0; pidx < session.pitches.length; pidx++) {
+        var p0 = session.pitches[pidx];
+        pitchRows += "<tr><td>#"+p0.n+"</td><td>"+p0.pitchType+"</td><td>"+p0.result+"</td><td>"+(p0.hitLocation ? "Y" : "N")+"</td></tr>";
+      }
+      allPitchesBlock.innerHTML =
+        '<table class="table" aria-label="All pitches">' +
+        "<thead><tr><th>#</th><th>Type</th><th>Result</th><th>Hit?</th></tr></thead>" +
+        "<tbody>" + pitchRows + "</tbody></table>";
+    }
 
     saveBtn.disabled = !!session.savedId;
   }
@@ -616,7 +709,7 @@
   backToStartBtn.addEventListener("click", function () {
     sessionNameInput.value = "";
     goToSetup();
-    toast("Ready for a new session");
+    toast("New session ready.");
   });
 
   viewHistoryBtn.addEventListener("click", goToHistory);
