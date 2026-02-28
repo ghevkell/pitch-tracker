@@ -54,6 +54,7 @@
   var selectedPitchType = null;
   var selectedResult = null;
   var hitLocation = false; // default No
+  var strikeStreak = 0;    // for 3-in-a-row toast
 
   function pad2(n) {
     var s = String(n);
@@ -277,6 +278,7 @@
   function goToSetup() {
     currentSession = null;
     resetSelections();
+    strikeStreak = 0;
     setSessionSubtitle();
     pitchCountEl.textContent = "0";
     runningStatsEl.textContent = "Strikes: 0 • Balls: 0 • Strike%: 0%";
@@ -322,6 +324,7 @@
       savedId: null
     };
     resetSelections();
+    strikeStreak = 0;
     setSessionSubtitle();
     goToLogger();
     renderRunning();
@@ -362,6 +365,18 @@
     }
   }
 
+  function updateStreak(result) {
+    if (result === "Strike") {
+      strikeStreak += 1;
+      if (strikeStreak === 3) {
+        toast("🎯 3 strikes in a row!");
+        strikeStreak = 0; // reset so it can fire again later
+      }
+    } else {
+      strikeStreak = 0;
+    }
+  }
+
   function logPitch() {
     if (!currentSession || currentSession.ended) return;
 
@@ -374,6 +389,8 @@
     };
 
     currentSession.pitches.push(pitch);
+
+    updateStreak(pitch.result);
 
     resetSelections();
     renderRunning();
@@ -389,6 +406,8 @@
     if (!currentSession || currentSession.ended) return;
     if (currentSession.pitches.length === 0) return;
     currentSession.pitches.pop();
+    // Streak becomes ambiguous after undo; simplest: reset it.
+    strikeStreak = 0;
     renderRunning();
     updateLogButtonState();
     toast("Undid last pitch");
@@ -528,19 +547,41 @@
       "</table>";
 
     var groups = groupInFives(session.pitches);
+
+    // Find personal best group (highest strike%); tie-breaker: earliest group
+    var bestIndex = -1;
+    var bestPct = -1;
+    for (var bi = 0; bi < groups.length; bi++) {
+      if (groups[bi].stats.strikePct > bestPct) {
+        bestPct = groups[bi].stats.strikePct;
+        bestIndex = groups[bi].index;
+      }
+    }
+
     groupsBlock.innerHTML = "";
     if (groups.length === 0) {
       groupsBlock.textContent = "No pitches recorded.";
     } else {
       for (var gi = 0; gi < groups.length; gi++) {
         var g = groups[gi];
-
         var div = document.createElement("div");
         div.style.marginBottom = "12px";
 
-        // Positive reinforcement: >50% strikes turns green
-        var kind = (g.stats.strikePct > 50) ? "good" : "try";
-        var big = (g.stats.strikePct > 50) ? "Nice! ✅" : "Keep going 💪";
+        var isBest = (g.index === bestIndex && groups.length > 0);
+
+        var kind;
+        var big;
+        if (isBest) {
+          kind = "best";
+          big = "Personal best 🏅";
+        } else if (g.stats.strikePct > 50) {
+          kind = "good";
+          big = "Nice! ✅";
+        } else {
+          kind = "try";
+          big = "Keep going 💪";
+        }
+
         var small = "Group " + g.index + " — " + g.stats.strikePct + "% strikes (" + g.stats.strikes + " strikes, " + g.stats.balls + " balls)";
 
         var rows = "";
