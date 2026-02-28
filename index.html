@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Pitch Practice Tracker</title>
+  <link rel="stylesheet" href="styles.css" />
+  <meta name="theme-color" content="#111111" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="title">
+        <h1>Pitch Tracker</h1>
+        <div class="subtitle" id="sessionSubtitle">No session running</div>
+      </div>
+
+      <div class="counter" aria-live="polite">
+        <div class="counterLabel">Pitches</div>
+        <div class="counterValue"><span id="pitchCount">0</span>/<span id="pitchLimit">20</span></div>
+      </div>
+    </header>
+
+    <main>
+      <!-- SETUP / START -->
+      <section class="card" id="setupCard">
+        <div class="row">
+          <div class="grow">
+            <label class="label" for="sessionName">Session name (optional)</label>
+            <input id="sessionName" class="input" placeholder="e.g., Tuesday bullpen" />
+          </div>
+          <button class="btn primary" id="startBtn">Start session</button>
+        </div>
+
+        <div class="row small">
+          <button class="btn" id="viewHistoryBtn">View saved sessions</button>
+          <button class="btn danger" id="clearAllBtn" title="Deletes all saved sessions">Clear all</button>
+        </div>
+      </section>
+
+      <!-- INPUT / LOGGING -->
+      <section class="card hidden" id="loggerCard">
+        <div class="grid">
+          <div>
+            <div class="sectionTitle">Pitch Type</div>
+            <div class="btnGrid" id="pitchTypeButtons"></div>
+          </div>
+
+          <div>
+            <div class="sectionTitle">Result</div>
+            <div class="btnGrid" id="resultButtons"></div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="toggle">
+            <span class="sectionTitle" style="margin:0">Hit location?</span>
+            <div class="pillGroup" role="group" aria-label="Hit location">
+              <button class="pill" id="hitNoBtn" type="button">No</button>
+              <button class="pill" id="hitYesBtn" type="button">Yes</button>
+            </div>
+          </div>
+
+          <div class="grow">
+            <label class="label" for="notes">Notes (optional)</label>
+            <input id="notes" class="input" placeholder="quick note..." />
+          </div>
+        </div>
+
+        <div class="row">
+          <button class="btn primary" id="logBtn" disabled>Log pitch</button>
+          <button class="btn" id="undoBtn" disabled>Undo last</button>
+          <button class="btn danger" id="endBtn">End session</button>
+        </div>
+
+        <div class="mini">
+          <div class="miniTitle">Running stats</div>
+          <div class="miniStats" id="runningStats">Strikes: 0 • Balls: 0 • Strike%: 0%</div>
+        </div>
+
+        <div class="mini">
+          <div class="miniTitle">Last 5 pitches</div>
+          <ol class="log" id="lastFive"></ol>
+        </div>
+      </section>
+
+      <!-- REPORT -->
+      <section class="card hidden" id="reportCard">
+        <div class="row">
+          <div class="grow">
+            <div class="sectionTitle">Session Report</div>
+            <div class="subtitle" id="reportSubtitle"></div>
+          </div>
+          <button class="btn" id="backToStartBtn">Start new session</button>
+        </div>
+
+        <div class="reportBlock" id="overallBlock"></div>
+
+        <div class="reportBlock">
+          <div class="reportTitle">Pitches grouped in 5s</div>
+          <div id="groupsBlock"></div>
+        </div>
+
+        <div class="reportBlock">
+          <div class="reportTitle">By pitch type</div>
+          <div id="byTypeBlock"></div>
+        </div>
+
+        <div class="row">
+          <button class="btn primary" id="copySummaryBtn">Copy summary</button>
+          <button class="btn" id="exportCsvBtn">Export CSV</button>
+          <button class="btn" id="saveBtn">Save session</button>
+        </div>
+
+        <div class="hint">
+          Tip: Add this page to your phone Home Screen for “app mode.”
+        </div>
+      </section>
+
+      <!-- HISTORY -->
+      <section class="card hidden" id="historyCard">
+        <div class="row">
+          <div class="grow">
+            <div class="sectionTitle">Saved Sessions</div>
+            <div class="subtitle">Tap one to view its report.</div>
+          </div>
+          <button class="btn" id="historyBackBtn">Back</button>
+        </div>
+
+        <div id="historyList" class="historyList"></div>
+      </section>
+
+      <!-- TOAST -->
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    </main>
+
+    <footer class="footer">
+      <span>Offline friendly • Local storage</span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
